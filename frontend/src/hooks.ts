@@ -1,20 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
+import { parseHashRoute, navigate as routerNavigate, useAppRouter } from "./routes/router";
 
-/** Tiny hash router: "#/result/atm_1" -> ["result", "atm_1"]. No dependency needed. */
-export function useHashRoute(): string[] {
-  const parse = () => window.location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
-  const [route, setRoute] = useState(parse);
+export { useAppRouter, routerNavigate as navigate };
+
+/**
+ * Backward-compatible useHashRoute hook:
+ * returns [path, param] (e.g. ["result", "atm_1"])
+ */
+export function useHashRoute(): [string, string | undefined] {
+  const [current, setCurrent] = useState(parseHashRoute);
+
   useEffect(() => {
-    const onChange = () => setRoute(parse());
+    const onChange = () => setCurrent(parseHashRoute());
     window.addEventListener("hashchange", onChange);
     return () => window.removeEventListener("hashchange", onChange);
   }, []);
-  return route;
-}
 
-export const navigate = (path: string) => {
-  window.location.hash = `/${path}`;
-};
+  return [current.path, current.param];
+}
 
 /** Load data on mount with loading / error state and a reload function. */
 export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
@@ -35,5 +38,6 @@ export function useLoad<T>(fn: () => Promise<T>, deps: unknown[] = []) {
   useEffect(() => {
     reload();
   }, [reload]);
+
   return { data, error, loading, reload, setData };
 }

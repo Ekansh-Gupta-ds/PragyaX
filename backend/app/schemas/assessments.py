@@ -3,7 +3,8 @@ Assessment Schemas
 """
 
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
+from .timestamps import TimestampString
 
 
 class AssessmentQuestionPublic(BaseModel):
@@ -48,7 +49,7 @@ class AssessmentResultResponse(BaseModel):
     breakdown: List[QuestionBreakdownItem]
     is_mock: bool
     provider: str
-    created_at: Optional[str] = None
+    created_at: Optional[TimestampString] = None
 
 
 class AssessmentHistoryItem(BaseModel):
@@ -59,7 +60,7 @@ class AssessmentHistoryItem(BaseModel):
     total: int
     percentage: float
     proficiency_level: str
-    created_at: str
+    created_at: Optional[TimestampString] = None
 
 
 class AssessmentHistoryResponse(BaseModel):

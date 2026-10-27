@@ -2,8 +2,10 @@
 Dashboard Schemas
 """
 
-from pydantic import BaseModel
-from typing import List, Optional, Any
+from pydantic import BaseModel, Field
+from typing import List, Optional
+from .timestamps import TimestampString
+from .assessments import AssessmentHistoryItem
 from .auth import UserProfileResponse
 from .subjects import SubjectItemResponse
 
@@ -28,7 +30,14 @@ class BadgeItem(BaseModel):
     title: str
     description: str
     icon: str
-    awarded_at: str
+    awarded_at: TimestampString
+
+
+class DashboardAttemptItem(AssessmentHistoryItem):
+    """Preserve existing public summary fields, filter unexpected internals."""
+    user_id: str
+    summary_feedback: str
+    recommended_topics: List[str]
 
 
 class DashboardResponse(BaseModel):
@@ -38,5 +47,5 @@ class DashboardResponse(BaseModel):
     metrics: MetricsData
     recommended_next_topics: List[str]
     recommendations_source: str = "starter"
-    recent_attempts: List[Any] = []
-    badges: List[BadgeItem] = []
+    recent_attempts: List[DashboardAttemptItem] = Field(default_factory=list)
+    badges: List[BadgeItem] = Field(default_factory=list)

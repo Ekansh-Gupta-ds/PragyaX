@@ -12,7 +12,12 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
 from ai.factory import get_ai_provider
 
-from ..schemas.chat import ChatInputRequest, ChatMessageResponse, ChatHistoryResponse
+from ..schemas.chat import (
+    ChatInputRequest,
+    ChatMessageResponse,
+    ChatHistoryResponse,
+    ChatProviderResult
+)
 from ..services.auth_service import get_current_user
 from ..database.repository import Repository
 
@@ -29,24 +34,31 @@ def send_chat_message(payload: ChatInputRequest, user: dict = Depends(get_curren
             detail="Message cannot be empty."
         )
 
-    # 1. Save user query to persistent history
+    # 1. Read prior history before saving current prompt (avoids duplicate prompt in context)
+    history = Repository.get_chat_history(user["id"], limit=10)
+    history_tuples = [{"role": h["role"], "content": h["content"]} for h in history]
+
+    # 2. Query and validate pluggable AI Provider
+    try:
+        ai_provider = get_ai_provider()
+        ai_result = ChatProviderResult.model_validate(ai_provider.generate_chat_response(
+            prompt=user_msg_content,
+            subject=payload.subject,
+            history=history_tuples
+        )).model_dump()
+    except Exception:
+        # Provider errors may contain credentials; never return or log their text.
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Learning provider is temporarily unavailable."
+        ) from None
+
+    # 3. Save user query to persistent history (only after generation succeeds)
     Repository.save_chat_message(
         user_id=user["id"],
         subject=payload.subject,
         role="user",
         content=user_msg_content
-    )
-
-    # 2. Get past history for context
-    history = Repository.get_chat_history(user["id"], limit=10)
-    history_tuples = [{"role": h["role"], "content": h["content"]} for h in history]
-
-    # 3. Query pluggable AI Provider
-    ai_provider = get_ai_provider()
-    ai_result = ai_provider.generate_chat_response(
-        prompt=user_msg_content,
-        subject=payload.subject,
-        history=history_tuples
     )
 
     # 4. Save AI reply to persistent history
@@ -75,7 +87,15 @@ def send_chat_message(payload: ChatInputRequest, user: dict = Depends(get_curren
 def get_chat_history(user: dict = Depends(get_current_user)):
     """Retrieves persistent learning chat history for the authenticated learner."""
     history = Repository.get_chat_history(user["id"], limit=50)
-    ai_provider = get_ai_provider()
+    try:
+        ai_provider = get_ai_provider()
+        provider_name = ai_provider.provider_name
+        is_mock = ai_provider.is_mock
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Provider metadata is temporarily unavailable."
+        ) from None
     
     formatted = []
     for h in history:
@@ -86,13 +106,13 @@ def get_chat_history(user: dict = Depends(get_current_user)):
             "role": h["role"],
             "content": h["content"],
             "suggested_followups": h.get("suggested_followups", []),
-            "is_mock": ai_provider.is_mock,
-            "provider": ai_provider.provider_name,
-            "created_at": str(h.get("created_at"))
+            "is_mock": is_mock,
+            "provider": provider_name,
+            "created_at": h.get("created_at")
         })
 
     return {
         "messages": formatted,
-        "active_provider": ai_provider.provider_name,
-        "is_mock": ai_provider.is_mock
+        "active_provider": provider_name,
+        "is_mock": is_mock
     }

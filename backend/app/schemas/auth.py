@@ -4,6 +4,7 @@ Auth Schemas
 
 from pydantic import BaseModel, Field
 from typing import Optional
+from .timestamps import TimestampString
 
 
 class RegisterRequest(BaseModel):
@@ -21,7 +22,7 @@ class UserProfileResponse(BaseModel):
     id: str
     name: str
     email: str
-    created_at: Optional[str] = None
+    created_at: Optional[TimestampString] = None
 
 
 class AuthResponse(BaseModel):

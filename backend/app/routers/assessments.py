@@ -19,6 +19,7 @@ from ..schemas.assessments import (
     AssessmentHistoryResponse,
     AssessmentHistoryItem
 )
+from ..services.assessment_service import evaluate_assessment
 from ..services.auth_service import get_current_user
 from ..database.repository import Repository
 
@@ -95,13 +96,25 @@ def submit_assessment(payload: AssessmentSubmitRequest, user: dict = Depends(get
     answers = {q_id: str(opt).strip().upper() for q_id, opt in payload.answers.items()}
     subject = Repository.get_subject_by_id(ref_questions[0]["subject_id"])
 
-    # 3. Pass to Pluggable AI Engine for deterministic evaluation (answer key comes from the DB, never the client)
-    ai_provider = get_ai_provider()
-    eval_result = ai_provider.evaluate_assessment(
-        subject=subject["title"],
-        questions=ref_questions,
-        user_answers=answers
-    )
+    if subject is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Assessment subject is unavailable."
+        )
+
+    # 3. Server-owned grading with AI-provided qualitative feedback
+    try:
+        eval_result = evaluate_assessment(
+            get_ai_provider(),
+            subject["title"],
+            ref_questions,
+            answers
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Assessment provider is temporarily unavailable."
+        ) from None
 
     # 4. Persist result in database
     attempt = Repository.save_assessment_attempt(
@@ -131,7 +144,7 @@ def submit_assessment(payload: AssessmentSubmitRequest, user: dict = Depends(get
         "breakdown": attempt["breakdown"],
         "is_mock": eval_result.get("is_mock", True),
         "provider": eval_result.get("provider", "PragyaX AI"),
-        "created_at": str(attempt.get("created_at"))
+        "created_at": attempt.get("created_at")
     }
 
 
@@ -149,7 +162,7 @@ def get_assessment_history(user: dict = Depends(get_current_user)):
                 total=a["total"],
                 percentage=a["percentage"],
                 proficiency_level=a["proficiency_level"],
-                created_at=str(a.get("created_at"))
+                created_at=a.get("created_at")
             )
             for a in attempts
         ]
@@ -169,7 +182,16 @@ def get_assessment_attempt_details(attempt_id: str, user: dict = Depends(get_cur
             detail="Assessment attempt not found or unauthorized."
         )
 
-    ai_provider = get_ai_provider()
+    try:
+        ai_provider = get_ai_provider()
+        provider_name = ai_provider.provider_name
+        is_mock = ai_provider.is_mock
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Provider metadata is temporarily unavailable."
+        ) from None
+
     return {
         "id": attempt["id"],
         "user_id": user["id"],
@@ -182,7 +204,7 @@ def get_assessment_attempt_details(attempt_id: str, user: dict = Depends(get_cur
         "summary_feedback": attempt["summary_feedback"],
         "recommended_topics": attempt["recommended_topics"],
         "breakdown": attempt["breakdown"],
-        "is_mock": ai_provider.is_mock,
-        "provider": ai_provider.provider_name,
-        "created_at": str(attempt.get("created_at"))
+        "is_mock": is_mock,
+        "provider": provider_name,
+        "created_at": attempt.get("created_at")
     }

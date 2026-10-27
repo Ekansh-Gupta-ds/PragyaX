@@ -9,6 +9,7 @@ from .chat import router as chat_router
 from .assessments import router as assessments_router
 from .dashboard import router as dashboard_router
 from .challenges import router as challenges_router
+from .roadmap import router as roadmap_router
 
 __all__ = [
     "health_router",
@@ -17,5 +18,6 @@ __all__ = [
     "chat_router",
     "assessments_router",
     "dashboard_router",
-    "challenges_router"
+    "challenges_router",
+    "roadmap_router"
 ]

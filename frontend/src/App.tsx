@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, setUnauthorizedHandler, tokenStore } from "./api/client";
-import type { User } from "./api/types";
-import Layout from "./components/Layout";
-import { Loading } from "./components/States";
-import { navigate, useHashRoute } from "./hooks";
+import type { User } from "./types/api";
+import type { RoutePath } from "./types/routes";
+import { AppLayout } from "./components/layout";
+import { LoadingState } from "./components/ui";
+import { navigate, useAppRouter } from "./routes/router";
 import AuthPage from "./pages/AuthPage";
 import DashboardPage from "./pages/DashboardPage";
 import ChatPage from "./pages/ChatPage";
@@ -17,14 +18,19 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(!!tokenStore.get());
   const [aiIsMock, setAiIsMock] = useState(true);
-  const [page = "dashboard", param] = useHashRoute();
+  const { route, param } = useAppRouter();
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
       tokenStore.clear();
       setUser(null);
     });
-    api.health().then((h) => setAiIsMock(h.ai_is_mock)).catch(() => {});
+
+    api
+      .health()
+      .then((h) => setAiIsMock(h.ai_is_mock))
+      .catch(() => {});
+
     if (tokenStore.get()) {
       api
         .me()
@@ -37,7 +43,7 @@ export default function App() {
   const onAuth = (u: User, token: string, isNew: boolean) => {
     tokenStore.set(token);
     setUser(u);
-    // New learners follow the guided flow: chat -> subject -> assessment -> results -> dashboard.
+    // Guided flow: new learners start in chat, returning learners land on dashboard
     navigate(isNew ? "chat" : "dashboard");
   };
 
@@ -47,22 +53,43 @@ export default function App() {
     setUser(null);
   };
 
-  if (checking) return <Loading label="Restoring your session…" />;
-  if (!user) return <AuthPage onAuth={onAuth} />;
+  if (checking) {
+    return <LoadingState label="Restoring your session…" fullPage />;
+  }
 
-  const pages: Record<string, ReactNode> = {
-    dashboard: <DashboardPage />,
-    chat: <ChatPage />,
-    subjects: <SubjectsPage />,
-    assessment: <AssessmentPage />,
-    results: <HistoryPage />,
-    result: <ResultPage id={param ?? ""} />,
-    challenge: <ChallengePage />,
+  if (!user) {
+    return <AuthPage onAuth={onAuth} />;
+  }
+
+  const renderCurrentPage = (currentRoute: RoutePath): ReactNode => {
+    switch (currentRoute) {
+      case "dashboard":
+        return <DashboardPage />;
+      case "chat":
+        return <ChatPage />;
+      case "subjects":
+        return <SubjectsPage />;
+      case "assessment":
+        return <AssessmentPage />;
+      case "results":
+        return <HistoryPage />;
+      case "result":
+        return <ResultPage id={param ?? ""} />;
+      case "challenge":
+        return <ChallengePage />;
+      default:
+        return <DashboardPage />;
+    }
   };
 
   return (
-    <Layout user={user} active={page} aiIsMock={aiIsMock} onLogout={onLogout}>
-      {pages[page] ?? <DashboardPage />}
-    </Layout>
+    <AppLayout
+      user={user}
+      active={route}
+      aiIsMock={aiIsMock}
+      onLogout={onLogout}
+    >
+      {renderCurrentPage(route)}
+    </AppLayout>
   );
 }
